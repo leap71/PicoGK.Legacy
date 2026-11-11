@@ -13,6 +13,8 @@ EXPECTED_NATIVE = {
     f"runtimes/osx-arm64/native/{NATIVE_BASENAME}.dylib",
     f"runtimes/win-x64/native/{NATIVE_BASENAME}.dll",
     "runtimes/win-x64/native/tbb12.dll",
+    f"runtimes/linux-x64/native/{NATIVE_BASENAME}.so",
+    "runtimes/linux-x64/native/libtbb.so.12",
 }
 
 
