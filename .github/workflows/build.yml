@@ -80,7 +80,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cmake -S . -B build-legacy             -G "Visual Studio 17 2022" -A x64             -DPICOGK_RID=${{ matrix.rid }}
+          cmake -S . -B build-legacy            -DCMAKE_BUILD_TYPE=Release              -DPICOGK_RID=${{ matrix.rid }} \
 
       - name: Configure Linux
         if: runner.os == 'Linux'
