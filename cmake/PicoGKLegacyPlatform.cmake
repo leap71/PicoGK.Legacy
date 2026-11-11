@@ -1,4 +1,4 @@
-# Restrict initial validation to the two platforms supported by PicoGK 2.x.
+# macOS and Windows are release targets; Linux is an experimental build target.
 # An explicit PICOGK_RID is permitted only when it matches the host target.
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -16,8 +16,14 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         message(FATAL_ERROR "Expected macOS arm64; set CMAKE_OSX_ARCHITECTURES=arm64")
     endif()
     set(_picogk_expected_rid "osx-arm64")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR
+       NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+        message(FATAL_ERROR "Experimental Linux build requires x86-64")
+    endif()
+    set(_picogk_expected_rid "linux-x64")
 else()
-    message(FATAL_ERROR "Initial migration supports Windows x64 and macOS arm64 only")
+    message(FATAL_ERROR "Supported hosts: Windows x64, macOS arm64, Linux x64")
 endif()
 
 if(DEFINED PICOGK_RID AND NOT PICOGK_RID STREQUAL _picogk_expected_rid)

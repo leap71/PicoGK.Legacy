@@ -67,13 +67,17 @@ if(APPLE)
         XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME YES
         BUILD_RPATH "@loader_path"
         INSTALL_RPATH "@loader_path")
+elseif(UNIX)
+    set_target_properties(PicoGKRuntime PROPERTIES
+        BUILD_RPATH "$ORIGIN"
+        INSTALL_RPATH "$ORIGIN")
 endif()
 set_target_properties(PicoGKRuntime PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 
 # oneTBB is dynamic. Copy the actual binary under its loader-facing SONAME.
-if(APPLE)
+if(UNIX)
     add_custom_command(TARGET PicoGKRuntime POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "$<TARGET_FILE:TBB::tbb>"

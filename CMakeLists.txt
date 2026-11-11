@@ -82,6 +82,12 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 set(GLFW_LIBRARY_TYPE STATIC CACHE STRING "" FORCE)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Compile the legacy viewer against X11 on the Linux build runner.
+    # This does not enable graphical viewer smoke tests on a headless runner.
+    set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+endif()
 add_subdirectory(third_party/glfw ${CMAKE_BINARY_DIR}/third_party/glfw EXCLUDE_FROM_ALL)
 find_package(OpenGL REQUIRED)
 

@@ -1,0 +1,158 @@
+name: Build PicoGK.Legacy Native
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build.yml
+      - CMakeLists.txt
+      - cmake/**
+      - native/PicoVDB/**
+      - PicoGK
+      - PicoGKRuntime
+      - third_party/**
+      - .gitmodules
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            os: macos-15
+            rid: osx-arm64
+            experimental: false
+          - name: Windows x64
+            os: windows-2025
+            rid: win-x64
+            experimental: false
+          - name: Linux x64 (experimental)
+            os: ubuntu-22.04
+            rid: linux-x64
+            experimental: true
+
+    steps:
+      - name: Check out superproject
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Initialize direct submodules only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init --             PicoGK             PicoGKRuntime             third_party/openvdb             third_party/oneTBB             third_party/glfw             third_party/imgui
+          git submodule status
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y             xorg-dev             libgl1-mesa-dev             libxkbcommon-dev             pkg-config
+
+      - name: Show tool versions
+        shell: bash
+        run: |
+          cmake --version
+          git --version
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            xcodebuild -version
+          fi
+
+      - name: Configure macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cmake -S . -B build-legacy             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_OSX_ARCHITECTURES=arm64             -DPICOGK_RID=${{ matrix.rid }}
+
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cmake -S . -B build-legacy             -G "Visual Studio 17 2022" -A x64             -DPICOGK_RID=${{ matrix.rid }}
+
+      - name: Configure Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build-legacy             -DCMAKE_BUILD_TYPE=Release             -DPICOGK_RID=${{ matrix.rid }}
+
+      - name: Build native runtime
+        shell: bash
+        run: |
+          cmake --build build-legacy             --config Release             --target PicoGKRuntime             --parallel 2
+
+      - name: Verify staged native binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          native="build-legacy/artifacts/runtimes/${{ matrix.rid }}/native"
+          ls -lah "$native"
+
+          case "${{ matrix.rid }}" in
+            osx-arm64)
+              test -f "$native/picogk.dylib"
+              test ! -L "$native/picogk.dylib"
+              test -f "$native/libtbb.12.dylib"
+              file "$native/picogk.dylib" | grep -q arm64
+              ;;
+            win-x64)
+              test -f "$native/picogk.26.2.dll"
+              test -f "$native/tbb12.dll"
+              ;;
+            linux-x64)
+              test -f "$native/picogk.so"
+              test -f "$native/libtbb.so.12"
+              ;;
+          esac
+
+      - name: Audit macOS native dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          native="build-legacy/artifacts/runtimes/${{ matrix.rid }}/native"
+          otool -L "$native/picogk.dylib"
+          otool -l "$native/picogk.dylib" |
+            grep -A 3 LC_RPATH | grep -Fq '@loader_path'
+          otool -L "$native/picogk.dylib" |
+            grep -Fq '@rpath/libtbb.12.dylib'
+          if otool -L "$native/picogk.dylib" |
+               grep -E '/opt/homebrew|/usr/local|/Users/|/Volumes/'; then
+            echo "Found non-relocatable dependency path" >&2
+            exit 1
+          fi
+
+      - name: Audit Linux native dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          native="build-legacy/artifacts/runtimes/${{ matrix.rid }}/native"
+          readelf -d "$native/picogk.so" | grep -E 'NEEDED|RPATH|RUNPATH'
+          readelf -d "$native/picogk.so" |
+            grep -E 'RPATH|RUNPATH' | grep -Fq '$ORIGIN'
+          ldd "$native/picogk.so" | tee /tmp/picogk-ldd.txt
+          if grep -q 'not found' /tmp/picogk-ldd.txt; then
+            echo "Unresolved native dependency" >&2
+            exit 1
+          fi
+
+      - name: Upload native binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.rid }}
+          path: build-legacy/artifacts/runtimes/${{ matrix.rid }}/native/
+          if-no-files-found: error
+          retention-days: 14
