@@ -1,18 +1,10 @@
-name: Build PicoGK.Legacy Native
+name: Build PicoGK.Legacy
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/build.yml
-      - CMakeLists.txt
-      - cmake/**
-      - native/PicoVDB/**
-      - PicoGK
-      - PicoGKRuntime
-      - third_party/**
-      - .gitmodules
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -46,11 +38,16 @@ jobs:
         with:
           submodules: false
 
-      - name: Initialize direct submodules only
+      - name: Initialize direct native submodules
         shell: bash
         run: |
           set -euo pipefail
-          git submodule update --init --             PicoGK             PicoGKRuntime             third_party/openvdb             third_party/oneTBB             third_party/glfw             third_party/imgui
+          git submodule update --init -- \
+            PicoGKRuntime \
+            third_party/openvdb \
+            third_party/oneTBB \
+            third_party/glfw \
+            third_party/imgui
           git submodule status
 
       - name: Install Linux build dependencies
@@ -59,41 +56,42 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y             xorg-dev             libgl1-mesa-dev             libxkbcommon-dev             pkg-config
-
-      - name: Show tool versions
-        shell: bash
-        run: |
-          cmake --version
-          git --version
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            xcodebuild -version
-          fi
+          sudo apt-get install -y \
+            xorg-dev \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            pkg-config
 
       - name: Configure macOS
         if: runner.os == 'macOS'
         shell: bash
-        run: |
-          cmake -S . -B build-legacy             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_OSX_ARCHITECTURES=arm64             -DPICOGK_RID=${{ matrix.rid }}
+        run: >-
+          cmake -S . -B build-legacy
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DPICOGK_RID=${{ matrix.rid }}
 
       - name: Configure Windows
         if: runner.os == 'Windows'
         shell: bash
-        run: |
-          cmake -S . -B build-legacy            -DCMAKE_BUILD_TYPE=Release              -DPICOGK_RID=${{ matrix.rid }} \
+        run: >-
+          cmake -S . -B build-legacy
+          -DCMAKE_BUILD_TYPE=Release
+          -DPICOGK_RID=${{ matrix.rid }}
 
       - name: Configure Linux
         if: runner.os == 'Linux'
         shell: bash
-        run: |
-          cmake -S . -B build-legacy             -DCMAKE_BUILD_TYPE=Release             -DPICOGK_RID=${{ matrix.rid }}
+        run: >-
+          cmake -S . -B build-legacy
+          -DCMAKE_BUILD_TYPE=Release
+          -DPICOGK_RID=${{ matrix.rid }}
 
       - name: Build native runtime
         shell: bash
-        run: |
-          cmake --build build-legacy             --config Release             --target PicoGKRuntime             --parallel 2
+        run: cmake --build build-legacy --config Release --target PicoGKRuntime --parallel 2
 
-      - name: Verify staged native binaries
+      - name: Verify native output
         shell: bash
         run: |
           set -euo pipefail
@@ -108,7 +106,7 @@ jobs:
               file "$native/picogk.dylib" | grep -q arm64
               ;;
             win-x64)
-              test -f "$native/picogk.26.2.dll"
+              test -f "$native/picogk.dll"
               test -f "$native/tbb12.dll"
               ;;
             linux-x64)
@@ -117,17 +115,15 @@ jobs:
               ;;
           esac
 
-      - name: Audit macOS native dependencies
+      - name: Audit macOS dependency paths
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
           native="build-legacy/artifacts/runtimes/${{ matrix.rid }}/native"
           otool -L "$native/picogk.dylib"
-          otool -l "$native/picogk.dylib" |
-            grep -A 3 LC_RPATH | grep -Fq '@loader_path'
-          otool -L "$native/picogk.dylib" |
-            grep -Fq '@rpath/libtbb.12.dylib'
+          otool -l "$native/picogk.dylib" | grep -A 3 LC_RPATH | grep -Fq '@loader_path'
+          otool -L "$native/picogk.dylib" | grep -Fq '@rpath/libtbb.12.dylib'
           if otool -L "$native/picogk.dylib" |
                grep -E '/opt/homebrew|/usr/local|/Users/|/Volumes/'; then
             echo "Found non-relocatable dependency path" >&2
@@ -156,3 +152,208 @@ jobs:
           path: build-legacy/artifacts/runtimes/${{ matrix.rid }}/native/
           if-no-files-found: error
           retention-days: 14
+
+  package:
+    name: Pack PicoGK NuGet
+    needs: native
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out superproject
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Initialize managed PicoGK submodule
+        shell: bash
+        run: |
+          git submodule update --init -- PicoGK
+          git -C PicoGK rev-parse HEAD
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compute package version from superproject tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != v* ]]; then
+              echo "Release tag must begin with v" >&2
+              exit 1
+            fi
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="2.4.0-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Invalid NuGet package version: $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "NuGet version: $version"
+
+      - name: Download macOS ARM64 runtime
+        uses: actions/download-artifact@v8
+        with:
+          name: native-osx-arm64
+          path: build-legacy/artifacts/runtimes/osx-arm64/native/
+
+      - name: Download Windows x64 runtime
+        uses: actions/download-artifact@v8
+        with:
+          name: native-win-x64
+          path: build-legacy/artifacts/runtimes/win-x64/native/
+
+      - name: Verify staging inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f build-legacy/artifacts/runtimes/osx-arm64/native/picogk.dylib
+          test -f build-legacy/artifacts/runtimes/osx-arm64/native/libtbb.12.dylib
+          test -f build-legacy/artifacts/runtimes/win-x64/native/picogk.dll
+          test -f build-legacy/artifacts/runtimes/win-x64/native/tbb12.dll
+          test -f Directory.Build.targets
+          ls -lah build-legacy/artifacts/runtimes/*/native/
+
+      - name: Verify managed native-library name
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A stale versioned P/Invoke name would make the freshly built package unusable.
+          python3 - <<'PYCODE'
+          import pathlib
+          import re
+
+          declarations = []
+          pattern = re.compile(r'\bconst\s+string\s+strPicoGKLib\s*=\s*"([^"]+)"\s*;')
+          for path in pathlib.Path('PicoGK').rglob('*.cs'):
+              for line in path.read_text(encoding='utf-8-sig').splitlines():
+                  code = line.split('//', 1)[0]
+                  match = pattern.search(code)
+                  if match:
+                      declarations.append((str(path), match.group(1)))
+          if len(declarations) != 1 or declarations[0][1] != 'picogk':
+              raise SystemExit(f'Expected exactly one unversioned strPicoGKLib declaration, found: {declarations}')
+          print('Managed native library import:', declarations[0])
+          PYCODE
+
+      - name: Restore managed project
+        shell: bash
+        run: >-
+          dotnet restore PicoGK/PicoGK.csproj
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PackageVersion=${{ steps.version.outputs.version }}
+          -p:PicoGKLegacyPack=true
+
+      - name: Build and pack managed project
+        shell: bash
+        run: >-
+          dotnet pack PicoGK/PicoGK.csproj
+          -c Release
+          --no-restore
+          -o artifacts/packages
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PackageVersion=${{ steps.version.outputs.version }}
+          -p:PicoGKLegacyPack=true
+          -p:GeneratePackageOnBuild=false
+          -p:ContinuousIntegrationBuild=true
+
+      - name: Verify NuGet payload
+        shell: bash
+        run: >-
+          python3 scripts/verify-package.py
+          artifacts/packages
+          ${{ steps.version.outputs.version }}
+
+      - name: Upload NuGet artifacts (no publishing)
+        uses: actions/upload-artifact@v7
+        with:
+          name: PicoGK-NuGet
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error
+          retention-days: 14
+
+  package-test:
+    name: NuGet consumer / ${{ matrix.name }}
+    needs: package
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            os: macos-15
+            rid: osx-arm64
+          - name: Windows x64
+            os: windows-2025
+            rid: win-x64
+
+    steps:
+      - name: Check out smoke test
+        uses: actions/checkout@v7
+
+      - name: Set up .NET SDK and runtime
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Download NuGet package
+        uses: actions/download-artifact@v8
+        with:
+          name: PicoGK-NuGet
+          path: artifacts/packages/
+
+      - name: Restore consumer from this run's package
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          pkg=(artifacts/packages/PicoGK.*.nupkg)
+          if [[ ${#pkg[@]} -ne 1 ]]; then
+            echo "Expected exactly one PicoGK .nupkg" >&2
+            exit 1
+          fi
+          version="$(basename "${pkg[0]}" .nupkg)"
+          version="${version#PicoGK.}"
+          packages_dir="$PWD/.package-test/nuget"
+          mkdir -p "$PWD/.package-test"
+          echo "PICOGK_TEST_VERSION=$version" >> "$GITHUB_ENV"
+          echo "PICOGK_TEST_PACKAGES_DIR=$packages_dir" >> "$GITHUB_ENV"
+          cat > .package-test/NuGet.config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="local" value="$GITHUB_WORKSPACE/artifacts/packages" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+            <packageSourceMapping>
+              <packageSource key="local"><package pattern="PicoGK" /></packageSource>
+              <packageSource key="nuget.org"><package pattern="*" /></packageSource>
+            </packageSourceMapping>
+          </configuration>
+          EOF
+          dotnet restore tests/PicoGK.Legacy.PackageSmoke/PicoGK.Legacy.PackageSmoke.csproj \
+            --configfile .package-test/NuGet.config \
+            -p:RestorePackagesPath="$packages_dir" \
+            -p:PicoGKPackageVersion="$version" \
+            -p:RuntimeIdentifier=${{ matrix.rid }}
+
+      - name: Run native loading smoke test
+        shell: bash
+        run: >-
+          dotnet run
+          --project tests/PicoGK.Legacy.PackageSmoke/PicoGK.Legacy.PackageSmoke.csproj
+          -c Release
+          --no-restore
+          -p:RestorePackagesPath="$PICOGK_TEST_PACKAGES_DIR"
+          -p:PicoGKPackageVersion="$PICOGK_TEST_VERSION"
+          -p:RuntimeIdentifier=${{ matrix.rid }}
