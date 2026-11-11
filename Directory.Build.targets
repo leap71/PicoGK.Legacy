@@ -1,19 +1,20 @@
+
 <Project>
   <!--
-    This file is imported automatically when MSBuild evaluates PicoGK/PicoGK.csproj.
-    Only the superproject's pack job enables PicoGKLegacyPack.
-    Normal builds of the PicoGK source submodule remain unchanged.
+    Imported automatically when MSBuild evaluates PicoGK/PicoGK.csproj.
+    Only PicoGK.Legacy enables PicoGKLegacyPack during packaging.
   -->
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'PicoGK' And '$(PicoGKLegacyPack)' == 'true'">
-    <!-- Replace the historical binary payloads declared in PicoGK.csproj. -->
-    <None Remove="native/osx-arm64/*.dylib;native/win-x64/*.dll" />
 
-    <!-- Add only the freshly compiled native libraries downloaded by CI. -->
+    <!-- Package the native libraries built by PicoGK.Legacy. -->
     <None Include="$(MSBuildThisFileDirectory)build-legacy/artifacts/runtimes/osx-arm64/native/*.dylib"
           Pack="true" PackagePath="runtimes/osx-arm64/native/" />
+
     <None Include="$(MSBuildThisFileDirectory)build-legacy/artifacts/runtimes/win-x64/native/*.dll"
           Pack="true" PackagePath="runtimes/win-x64/native/" />
+
     <None Include="$(MSBuildThisFileDirectory)build-legacy/artifacts/runtimes/linux-x64/native/*.so*"
           Pack="true" PackagePath="runtimes/linux-x64/native/" />
+
   </ItemGroup>
 </Project>
