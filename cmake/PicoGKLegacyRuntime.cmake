@@ -37,11 +37,6 @@ target_link_libraries(PicoGKRuntime PRIVATE PicoGK::PicoVDB glfw OpenGL::GL)
 set_target_properties(PicoGKRuntime PROPERTIES
     OUTPUT_NAME "picogk"
     PREFIX ""
-)
-
-set_target_properties(PicoGKRuntime PROPERTIES
-    OUTPUT_NAME "${_picogk_legacy_filename}"
-    PREFIX ""
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/archive"
     LIBRARY_OUTPUT_DIRECTORY "${PICOGK_NATIVE_OUTPUT_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${PICOGK_NATIVE_OUTPUT_DIR}"
