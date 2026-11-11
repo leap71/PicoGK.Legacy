@@ -1,8 +1,11 @@
 using System.Runtime.InteropServices;
 using PicoGK;
 
-if (Config.strPicoGKLib != "picogk")
-    throw new InvalidOperationException($"Expected unversioned import 'picogk', found '{Config.strPicoGKLib}'.");
+string strExpectedNativeName = Environment.GetEnvironmentVariable("PICOGK_NATIVE_BASENAME")
+    ?? throw new InvalidOperationException("PICOGK_NATIVE_BASENAME is not defined.");
+
+if (Config.strPicoGKLib != strExpectedNativeName)
+    throw new InvalidOperationException($"Expected native import '{strExpectedNativeName}', found '{Config.strPicoGKLib}'.");
 
 Console.WriteLine($"PicoGK package: {typeof(Config).Assembly.FullName}");
 Console.WriteLine($"Process architecture: {RuntimeInformation.ProcessArchitecture}");

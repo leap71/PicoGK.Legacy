@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+# Native library basename, without OS-specific extension.
+env:
+  PICOGK_NATIVE_BASENAME: picogk.26
+
 jobs:
   native:
     name: Native / ${{ matrix.name }}
@@ -100,17 +104,17 @@ jobs:
 
           case "${{ matrix.rid }}" in
             osx-arm64)
-              test -f "$native/picogk.dylib"
-              test ! -L "$native/picogk.dylib"
+              test -f "$native/${PICOGK_NATIVE_BASENAME}.dylib"
+              test ! -L "$native/${PICOGK_NATIVE_BASENAME}.dylib"
               test -f "$native/libtbb.12.dylib"
-              file "$native/picogk.dylib" | grep -q arm64
+              file "$native/${PICOGK_NATIVE_BASENAME}.dylib" | grep -q arm64
               ;;
             win-x64)
-              test -f "$native/picogk.dll"
+              test -f "$native/${PICOGK_NATIVE_BASENAME}.dll"
               test -f "$native/tbb12.dll"
               ;;
             linux-x64)
-              test -f "$native/picogk.so"
+              test -f "$native/${PICOGK_NATIVE_BASENAME}.so"
               test -f "$native/libtbb.so.12"
               ;;
           esac
@@ -121,10 +125,10 @@ jobs:
         run: |
           set -euo pipefail
           native="build-legacy/artifacts/runtimes/${{ matrix.rid }}/native"
-          otool -L "$native/picogk.dylib"
-          otool -l "$native/picogk.dylib" | grep -A 3 LC_RPATH | grep -Fq '@loader_path'
-          otool -L "$native/picogk.dylib" | grep -Fq '@rpath/libtbb.12.dylib'
-          if otool -L "$native/picogk.dylib" |
+          otool -L "$native/${PICOGK_NATIVE_BASENAME}.dylib"
+          otool -l "$native/${PICOGK_NATIVE_BASENAME}.dylib" | grep -A 3 LC_RPATH | grep -Fq '@loader_path'
+          otool -L "$native/${PICOGK_NATIVE_BASENAME}.dylib" | grep -Fq '@rpath/libtbb.12.dylib'
+          if otool -L "$native/${PICOGK_NATIVE_BASENAME}.dylib" |
                grep -E '/opt/homebrew|/usr/local|/Users/|/Volumes/'; then
             echo "Found non-relocatable dependency path" >&2
             exit 1
@@ -136,10 +140,10 @@ jobs:
         run: |
           set -euo pipefail
           native="build-legacy/artifacts/runtimes/${{ matrix.rid }}/native"
-          readelf -d "$native/picogk.so" | grep -E 'NEEDED|RPATH|RUNPATH'
-          readelf -d "$native/picogk.so" |
+          readelf -d "$native/${PICOGK_NATIVE_BASENAME}.so" | grep -E 'NEEDED|RPATH|RUNPATH'
+          readelf -d "$native/${PICOGK_NATIVE_BASENAME}.so" |
             grep -E 'RPATH|RUNPATH' | grep -Fq '$ORIGIN'
-          ldd "$native/picogk.so" | tee /tmp/picogk-ldd.txt
+          ldd "$native/${PICOGK_NATIVE_BASENAME}.so" | tee /tmp/picogk-ldd.txt
           if grep -q 'not found' /tmp/picogk-ldd.txt; then
             echo "Unresolved native dependency" >&2
             exit 1
@@ -212,9 +216,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f build-legacy/artifacts/runtimes/osx-arm64/native/picogk.dylib
+          test -f build-legacy/artifacts/runtimes/osx-arm64/native/${PICOGK_NATIVE_BASENAME}.dylib
           test -f build-legacy/artifacts/runtimes/osx-arm64/native/libtbb.12.dylib
-          test -f build-legacy/artifacts/runtimes/win-x64/native/picogk.dll
+          test -f build-legacy/artifacts/runtimes/win-x64/native/${PICOGK_NATIVE_BASENAME}.dll
           test -f build-legacy/artifacts/runtimes/win-x64/native/tbb12.dll
           test -f Directory.Build.targets
           ls -lah build-legacy/artifacts/runtimes/*/native/
@@ -223,8 +227,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # A stale versioned P/Invoke name would make the freshly built package unusable.
+          # The managed P/Invoke library name must match the CI native basename.
           python3 - <<'PYCODE'
+          import os
           import pathlib
           import re
 
@@ -236,8 +241,9 @@ jobs:
                   match = pattern.search(code)
                   if match:
                       declarations.append((str(path), match.group(1)))
-          if len(declarations) != 1 or declarations[0][1] != 'picogk':
-              raise SystemExit(f'Expected exactly one unversioned strPicoGKLib declaration, found: {declarations}')
+          native_name = os.environ['PICOGK_NATIVE_BASENAME']
+          if len(declarations) != 1 or declarations[0][1] != native_name:
+              raise SystemExit(f'Expected exactly one strPicoGKLib declaration for {native_name!r}, found: {declarations}')
           print('Managed native library import:', declarations[0])
           PYCODE
 

@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Verify that the tagged PicoGK package contains only the intended RID assets."""
 from pathlib import Path
+import os
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
+# Shared with .github/workflows/build.yml. Required for CI and local validation.
+NATIVE_BASENAME = os.environ["PICOGK_NATIVE_BASENAME"]
 EXPECTED_NATIVE = {
     "runtimes/osx-arm64/native/libtbb.12.dylib",
-    "runtimes/osx-arm64/native/picogk.dylib",
-    "runtimes/win-x64/native/picogk.dll",
+    f"runtimes/osx-arm64/native/{NATIVE_BASENAME}.dylib",
+    f"runtimes/win-x64/native/{NATIVE_BASENAME}.dll",
     "runtimes/win-x64/native/tbb12.dll",
 }
 
@@ -33,6 +36,16 @@ def verify(directory: Path, version: str) -> None:
             )
         if "lib/net9.0/PicoGK.dll" not in names:
             raise ValueError("Missing managed assembly: lib/net9.0/PicoGK.dll")
+
+        # NuGet places native and managed assets side-by-side in Windows consumer
+        # output. Windows is ordinarily case-insensitive, so picogk.dll would
+        # collide with the managed PicoGK.dll even though package paths differ.
+        managed_name = "PicoGK.dll".casefold()
+        for entry in native:
+            if entry.startswith("runtimes/win-") and Path(entry).name.casefold() == managed_name:
+                raise ValueError(
+                    f"Windows native library {entry!r} collides with managed PicoGK.dll"
+                )
 
         nuspecs = [name for name in names if name.endswith(".nuspec")]
         if len(nuspecs) != 1:
