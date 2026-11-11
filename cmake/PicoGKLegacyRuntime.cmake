@@ -34,13 +34,11 @@ target_include_directories(PicoGKRuntime
 
 target_link_libraries(PicoGKRuntime PRIVATE PicoGK::PicoVDB glfw OpenGL::GL)
 
-# Preserve the historical Windows DLL basename and emit a single unversioned
-# picogk.dylib on macOS (no versioned dylib or symlink).
-if(WIN32)
-    set(_picogk_legacy_filename "picogk.26.2")
-else()
-    set(_picogk_legacy_filename "picogk")
-endif()
+set_target_properties(PicoGKRuntime PROPERTIES
+    OUTPUT_NAME "picogk"
+    PREFIX ""
+)
+
 set_target_properties(PicoGKRuntime PROPERTIES
     OUTPUT_NAME "${_picogk_legacy_filename}"
     PREFIX ""
