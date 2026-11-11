@@ -1,0 +1,18 @@
+[submodule "PicoGK"]
+	path = PicoGK
+	url = https://github.com/leap71/PicoGK
+[submodule "PicoGKRuntime"]
+	path = PicoGKRuntime
+	url = https://github.com/leap71/PicoGKRuntime
+[submodule "third_party/openvdb"]
+	path = third_party/openvdb
+	url = https://github.com/AcademySoftwareFoundation/openvdb
+[submodule "third_party/oneTBB"]
+	path = third_party/oneTBB
+	url = https://github.com/uxlfoundation/oneTBB.git
+[submodule "third_party/glfw"]
+	path = third_party/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "third_party/imgui"]
+	path = third_party/imgui
+	url = https://github.com/ocornut/imgui.git
