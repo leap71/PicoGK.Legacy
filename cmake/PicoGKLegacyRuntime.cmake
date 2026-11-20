@@ -55,6 +55,13 @@ endforeach()
 if(MSVC)
     target_compile_options(PicoGKRuntime PRIVATE /bigobj)
 endif()
+# Keep float results the same on all three targets: do not fuse a * b + c into
+# one fused multiply-add. Clang contracts by default and arm64 has FMA, so
+# osx-arm64 otherwise rounds the lattice distances in PicoGKLattice.h
+# differently from linux-x64 and win-x64. MSVC does not contract under /fp:precise.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(PicoGKRuntime PRIVATE -ffp-contract=off)
+endif()
 if(APPLE)
     set_target_properties(PicoGKRuntime PROPERTIES
         XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME YES
